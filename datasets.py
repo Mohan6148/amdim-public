@@ -277,8 +277,8 @@ def _get_directories(dataset, input_dir):
         train_dir = os.path.join(input_dir, 'ILSVRC2012_img_train/')
         val_dir = os.path.join(input_dir, 'ILSVRC2012_img_val/')
     elif dataset == Dataset.PLACES205:
-        train_dir = os.path.join(input_dir, 'places205_256_train/')
-        val_dir = os.path.join(input_dir, 'places205_256_val/')
+        train_dir = os.path.join(input_dir, 'flowers-dataset/train')
+        val_dir = os.path.join(input_dir, 'flowers-dataset/test')
     else:
         raise 'Data directories for dataset ' + dataset + ' are not defined'
     return train_dir, val_dir
