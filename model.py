@@ -376,43 +376,36 @@ class MLPClassifier(nn.Module):
         logits = self.block_forward(x)
         return logits
 
-class FakeRKHSConvNet(nn.Module):
-    def __init__(self, n_input, n_output, use_bn=False):
-        super(FakeRKHSConvNet, self).__init__()
-        self.conv1 = nn.Conv2d(n_input, n_output, kernel_size=1, stride=1,
-                               padding=0, bias=False)
-        self.relu1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(n_output, n_output, kernel_size=1, stride=1,
-                               padding=0, bias=False)
-        # BN is optional for hidden layer and always for output layer
-        self.bn_hid = MaybeBatchNorm2d(n_output, True, use_bn)
-        self.bn_out = MaybeBatchNorm2d(n_output, True, True)
-        self.shortcut = nn.Conv2d(n_input, n_output, kernel_size=1,
-                                  stride=1, padding=0, bias=True)
-        # initialize shortcut to be like identity (if possible)
-        if n_output >= n_input:
-            eye_mask = np.zeros((n_output, n_input, 1, 1), dtype=np.uint8)
-            for i in range(n_input):
-                eye_mask[i, i, 0, 0] = 1
-            self.shortcut.weight.data.uniform_(-0.01, 0.01)
-            self.shortcut.weight.data.masked_fill_(torch.tensor(eye_mask), 1.)
-        return
+import torch
+import torch.nn as nn
 
-    def init_weights(self, init_scale=1.):
-        # initialize first conv in res branch
-        # -- rescale the default init for nn.Conv2d layers
-        nn.init.kaiming_uniform_(self.conv1.weight, a=math.sqrt(5))
-        self.conv1.weight.data.mul_(init_scale)
-        # initialize second conv in res branch
-        # -- set to 0, like fixup/zero init
-        nn.init.constant_(self.conv2.weight, 0.)
-        return
+class FakeRKHSConvNet(nn.Module):
+    def __init__(self, n_input, n_output, use_bn):
+        super(FakeRKHSConvNet, self).__init__()
+
+        self.main = nn.Sequential(
+            nn.Conv2d(n_input, n_output, kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(n_output) if use_bn else nn.Identity(),
+            nn.ReLU(inplace=True)
+        )
+
+        self.shortcut = nn.Conv2d(n_input, n_output, kernel_size=1, stride=1, padding=0, bias=False)
+
+        # Ensure the mask and tensor initialization are done on the correct device
+        with torch.no_grad():
+            eye_mask = torch.zeros((n_output, n_input, 1, 1), dtype=torch.bool)
+            for i in range(min(n_output, n_input)):
+                eye_mask[i, i, 0, 0] = True
+
+            self.shortcut.weight.data.uniform_(-0.01, 0.01)
+            self.shortcut.weight.data.masked_fill_(eye_mask, 1.0)
+
+
 
     def forward(self, x):
-        h_res = self.conv2(self.relu1(self.bn_hid(self.conv1(x))))
-        h = self.bn_out(h_res + self.shortcut(x))
-        return h
+        return self.main(x) + self.shortcut(x)
 
+print("✅ FakeRKHSConvNet initialized with boolean eye_mask.")
 
 class ConvResNxN(nn.Module):
     def __init__(self, n_in, n_out, width, stride, pad, use_bn=False):
